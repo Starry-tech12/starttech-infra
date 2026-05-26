@@ -1,13 +1,13 @@
 name: Infrastructure Deploy
 
 on:
-push:
-branches:
+ push:
+ branches:
 - main
 
 jobs:
-terraform:
-runs-on: ubuntu-latest
+ terraform:
+ runs-on: ubuntu-latest
 
 defaults:
   run:
