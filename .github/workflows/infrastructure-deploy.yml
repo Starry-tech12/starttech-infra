@@ -1,6 +1,4 @@
-``` yaml
 name: Infrastructure Deploy
-
 on:
 push:
 branches:
@@ -10,6 +8,7 @@ jobs:
 terraform:
 runs-on: ubuntu-latest
 
+```
 defaults:
   run:
     working-directory: terraform
