@@ -1,10 +1,21 @@
 # Terraform
 .terraform/
 *.tfstate
-*.tfstate.backup
+*.tfstate.*
+crash.log
 
-# Providers
-*.exe
-
-# Secrets
+# Sensitive files
 *.pem
+*.key
+terraform.tfvars
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
