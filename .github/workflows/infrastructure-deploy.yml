@@ -1,9 +1,9 @@
-```yaml
 name: Infrastructure Deploy
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   terraform:
@@ -38,4 +38,3 @@ jobs:
 
       - name: Terraform Apply
         run: terraform apply -auto-approve
-```
