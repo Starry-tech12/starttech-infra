@@ -1,3 +1,4 @@
+```
 name: Infrastructure Deploy
 
 on:
@@ -38,4 +39,4 @@ steps:
 
   - name: Terraform Apply
     run: terraform apply -auto-approve
-
+```
