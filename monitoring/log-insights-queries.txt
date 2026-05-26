@@ -1,0 +1,9 @@
+# Query 1: Filter HTTP 5xx Server Errors across the fleet
+fields @timestamp, @message, @logStream, @instanceId
+| filter @message like /5[0-9]{2}/
+| sort @timestamp desc
+| limit 20
+
+# Query 2: Request latency profiling and volume tracking
+filter @message like /Latency/
+| stats count(*) as totalRequests, avg(latency) as avgLatency by bin(1m)

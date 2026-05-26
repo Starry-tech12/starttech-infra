@@ -1,0 +1,61 @@
+name: "Backend CI/CD Pipeline"
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+    branches:
+      - main
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go Engine
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Run Quality Verification & Unit Tests
+        run: |
+          cd backend
+          go test -v ./...
+
+      - name: Build and Package Container Image
+        run: |
+          cd backend
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/starttech-backend:latest .
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Ship Container to Registry
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/starttech-backend:latest
+
+  deploy:
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Refresh Fleet Topology (Rolling Update)
+        run: |
+          # Obtains the relevant active Auto Scaling Group automatically
+          ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName, 'starttech-asg')].AutoScalingGroupName" --output text)
+          
+          # Forces the cluster to launch fresh instances that pull down the latest container image on initialization
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "$ASG_NAME" \
+            --preferences '{"MinHealthyPercentage": 50}'

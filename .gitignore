@@ -1,0 +1,10 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Providers
+*.exe
+
+# Secrets
+*.pem

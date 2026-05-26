@@ -1,0 +1,83 @@
+name: Frontend React CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'frontend/**'
+
+defaults:
+  run:
+    working-directory: frontend
+
+jobs:
+  build-and-test:
+    name: Build & Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Runtime Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Application Dependencies
+        run: npm ci
+
+      - name: Run Production Dependency Security Scan
+        run: npm audit --audit-level=high
+
+      - name: Execute Front-end Unit Testing Suite
+        run: npm test -- --watchAll=false --passWithNoTests
+
+      - name: Compile Production Build Bundle
+        run: npm run build
+        env:
+          REACT_APP_API_URL: ${{ secrets.PRODUCTION_API_ENDPOINT }}
+
+      # Archive the build artifacts temporarily for the deploy job
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: react-dist-bundle
+          path: frontend/build/ # <-- This path must perfectly match where React saves your files
+          retention-days: 1
+
+  deploy-production:
+    name: Deploy to AWS Production CDN
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Download Compiled Production Build
+        uses: actions/download-artifact@v4
+        with:
+          name: react-dist-bundle
+          path: frontend/build
+
+      - name: Authenticate Administrative AWS Session
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Executes the custom deploy-frontend automation script
+      - name: Execute Frontend Sync & Bust CDN Cache
+        run: |
+          chmod +x ../scripts/deploy-frontend.sh
+          ../scripts/deploy-frontend.sh
+        env:
+          S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.AWS_CLOUDFRONT_DIST_ID }}

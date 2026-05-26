@@ -1,0 +1,16 @@
+{
+  "AlarmName": "High-CPU-Utilization-Target",
+  "MetricName": "CPUUtilization",
+  "Namespace": "AWS/EC2",
+  "Statistic": "Average",
+  "Period": 300,
+  "EvaluationPeriods": 2,
+  "Threshold": 80.0,
+  "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+  "Dimensions": [
+    {
+      "Name": "AutoScalingGroupName",
+      "Value": "starttech-asg"
+    }
+  ]
+}
