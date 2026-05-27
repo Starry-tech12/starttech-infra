@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "frontend_bucket" {
-  bucket = "starttech-esther-frontend-2026"
+  bucket = "starttech-esther-frontend-2026-v2"
 
   tags = {
     Name        = "StartTech Frontend Bucket"
@@ -7,16 +7,13 @@ resource "aws_s3_bucket" "frontend_bucket" {
   }
 }
 
-resource "aws_vpc" "main_vpc" {
-  cidr_block = "10.0.0.0/16"
-
-  tags = {
-    Name = "starttech-vpc"
-  }
+data "aws_vpc" "main" {
+  id = "vpc-012a314a054cc042f"
 }
 
+
 resource "aws_subnet" "public_subnet_1" {
-  vpc_id                  = aws_vpc.main_vpc.id
+  vpc_id                  = data.aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
   availability_zone       = "us-east-1a"
   map_public_ip_on_launch = true
@@ -27,7 +24,7 @@ resource "aws_subnet" "public_subnet_1" {
 }
 
 resource "aws_subnet" "public_subnet_2" {
-  vpc_id                  = aws_vpc.main_vpc.id
+  vpc_id                  = data.aws_vpc.main.id
   cidr_block              = "10.0.2.0/24"
   availability_zone       = "us-east-1b"
   map_public_ip_on_launch = true
@@ -38,7 +35,7 @@ resource "aws_subnet" "public_subnet_2" {
 }
 
 resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.main_vpc.id
+  vpc_id = data.aws_vpc.main.id
 
   tags = {
     Name = "starttech-igw"
@@ -46,7 +43,7 @@ resource "aws_internet_gateway" "igw" {
 }
 
 resource "aws_route_table" "public_rt" {
-  vpc_id = aws_vpc.main_vpc.id
+  vpc_id = data.aws_vpc.main.id
 
   route {
     cidr_block = "0.0.0.0/0"
@@ -71,7 +68,7 @@ resource "aws_route_table_association" "public_assoc_2" {
 resource "aws_security_group" "alb_sg" {
   name        = "alb-security-group"
   description = "Allow HTTP traffic"
-  vpc_id      = aws_vpc.main_vpc.id
+  vpc_id      = data.aws_vpc.main.id
 
   ingress {
     from_port   = 80
@@ -102,13 +99,13 @@ resource "aws_security_group" "alb_sg" {
 resource "aws_security_group" "ec2_sg" {
   name        = "ec2-security-group"
   description = "Allow backend traffic"
-  vpc_id      = aws_vpc.main_vpc.id
+  vpc_id      = data.aws_vpc.main.id
 
   ingress {
     from_port       = 8080
     to_port         = 8080
     protocol        = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks     = ["0.0.0.0/0"]
     security_groups = [aws_security_group.alb_sg.id]
   }
 
@@ -134,7 +131,7 @@ resource "aws_security_group" "ec2_sg" {
 resource "aws_security_group" "redis_sg" {
   name        = "redis-security-group"
   description = "Allow Redis traffic"
-  vpc_id      = aws_vpc.main_vpc.id
+  vpc_id      = data.aws_vpc.main.id
 
   ingress {
     from_port       = 6379
@@ -159,7 +156,7 @@ resource "aws_lb_target_group" "backend_tg" {
   name     = "backend-target-group"
   port     = 8080
   protocol = "HTTP"
-  vpc_id   = aws_vpc.main_vpc.id
+  vpc_id   = data.aws_vpc.main.id
 
   health_check {
     path                = "/"
@@ -211,20 +208,29 @@ resource "aws_launch_template" "backend" {
 
   network_interfaces {
     associate_public_ip_address = true
+
+    security_groups = [
+      aws_security_group.ec2_sg.id
+    ]
   }
 
-  vpc_security_group_ids = [
-    aws_security_group.ec2_sg.id
-  ]
-
   user_data = base64encode(<<-EOF
-    #!/bin/bash
-    yum update -y
-    yum install -y docker
-    systemctl start docker
-    systemctl enable docker
-    docker run -d -p 8080:80 nginx
-  EOF
+#!/bin/bash
+
+yum update -y
+yum install -y docker
+
+systemctl start docker
+systemctl enable docker
+
+docker run -d \
+  -p 8080:80 \
+  --name starttech-backend \
+    nginx
+    -e MONGO_URI="mongodb+srv://estherisaiah2000_db_user:Starry12345@cluster0.mlwu6bq.mongodb.net/starttech?retryWrites=true&w=majority" \
+  127259106152.dkr.ecr.us-east-1.amazonaws.com/starttech-backend:latest
+
+EOF
   )
 
   tag_specifications {
