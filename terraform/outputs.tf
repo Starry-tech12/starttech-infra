@@ -3,5 +3,5 @@ output "s3_bucket_name" {
 }
 
 output "alb_dns_name" {
-  value = aws_lb.backend_alb.dns_name
+  value = aws_lb.alb.dns_name
 }

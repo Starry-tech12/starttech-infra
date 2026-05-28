@@ -1,11 +1,12 @@
 resource "aws_s3_bucket" "frontend_bucket" {
-  bucket = "starttech-esther-2026"
+  bucket = "starttech-esther-2026-${random_id.suffix.hex}"
 
   tags = {
     Name        = "StartTech Frontend Bucket"
     Environment = "Production"
   }
 }
+
 resource "aws_vpc" "main_vpc" {
   cidr_block = "10.0.0.0/16"
 
@@ -14,16 +15,13 @@ resource "aws_vpc" "main_vpc" {
   }
 }
 
-
 resource "aws_subnet" "public_subnet_1" {
   vpc_id                  = aws_vpc.main_vpc.id
   cidr_block              = "10.0.1.0/24"
   availability_zone       = "us-east-1a"
   map_public_ip_on_launch = true
 
-  tags = {
-    Name = "public-subnet-1"
-  }
+  tags = { Name = "public-subnet-1" }
 }
 
 resource "aws_subnet" "public_subnet_2" {
@@ -32,17 +30,11 @@ resource "aws_subnet" "public_subnet_2" {
   availability_zone       = "us-east-1b"
   map_public_ip_on_launch = true
 
-  tags = {
-    Name = "public-subnet-2"
-  }
+  tags = { Name = "public-subnet-2" }
 }
 
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main_vpc.id
-
-  tags = {
-    Name = "starttech-igw"
-  }
 }
 
 resource "aws_route_table" "public_rt" {
@@ -51,10 +43,6 @@ resource "aws_route_table" "public_rt" {
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.igw.id
-  }
-
-  tags = {
-    Name = "public-route-table"
   }
 }
 
@@ -68,10 +56,9 @@ resource "aws_route_table_association" "public_assoc_2" {
   route_table_id = aws_route_table.public_rt.id
 }
 
+# SECURITY GROUPS
 resource "aws_security_group" "alb_sg" {
-  name        = "alb-security-group"
-  description = "Allow HTTP traffic"
-  vpc_id      = aws_vpc.main_vpc.id
+  vpc_id = aws_vpc.main_vpc.id
 
   ingress {
     from_port   = 80
@@ -80,35 +67,21 @@ resource "aws_security_group" "alb_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
-  tags = {
-    Name = "alb-security-group"
-  }
 }
 
 resource "aws_security_group" "ec2_sg" {
-  name        = "ec2-security-group"
-  description = "Allow backend traffic"
-  vpc_id      = aws_vpc.main_vpc.id
+  vpc_id = aws_vpc.main_vpc.id
 
   ingress {
     from_port       = 8080
     to_port         = 8080
     protocol        = "tcp"
-    cidr_blocks     = ["0.0.0.0/0"]
     security_groups = [aws_security_group.alb_sg.id]
   }
 
@@ -116,7 +89,7 @@ resource "aws_security_group" "ec2_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["105.117.2.3/32"]
   }
 
   egress {
@@ -125,102 +98,85 @@ resource "aws_security_group" "ec2_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
-  tags = {
-    Name = "ec2-security-group"
-  }
 }
 
-resource "aws_security_group" "redis_sg" {
-  name        = "redis-security-group"
-  description = "Allow Redis traffic"
-  vpc_id      = aws_vpc.main_vpc.id
-
-  ingress {
-    from_port       = 6379
-    to_port         = 6379
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ec2_sg.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "redis-security-group"
-  }
+# CLOUDWATCH LOG GROUP
+resource "aws_cloudwatch_log_group" "app_logs" {
+  name              = "starttech-logs"
+  retention_in_days = 7
 }
 
-resource "aws_lb_target_group" "backend_tg" {
-  name     = "backend-target-group"
+# IAM FOR CLOUDWATCH
+resource "aws_iam_role" "ec2_role" {
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect = "Allow",
+      Principal = { Service = "ec2.amazonaws.com" },
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "cw_attach" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
+resource "aws_iam_instance_profile" "ec2_profile" {
+  role = aws_iam_role.ec2_role.name
+}
+
+# LOAD BALANCER
+resource "aws_lb" "alb" {
+  name               = "starttech-alb"
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb_sg.id]
+  subnets            = [aws_subnet.public_subnet_1.id, aws_subnet.public_subnet_2.id]
+}
+
+resource "aws_lb_target_group" "tg" {
+  name     = "backend-tg"
   port     = 8080
   protocol = "HTTP"
   vpc_id   = aws_vpc.main_vpc.id
 
   health_check {
-    path                = "/"
-    protocol            = "HTTP"
-    matcher             = "200"
-    interval            = 30
-    timeout             = 5
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-  }
-
-  tags = {
-    Name = "backend-target-group"
+    path = "/"
   }
 }
 
-resource "aws_lb" "backend_alb" {
-  name               = "starttech-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb_sg.id]
-
-  subnets = [
-    aws_subnet.public_subnet_1.id,
-    aws_subnet.public_subnet_2.id
-  ]
-
-  tags = {
-    Name = "starttech-alb"
-  }
-}
-
-resource "aws_lb_listener" "http_listener" {
-  load_balancer_arn = aws_lb.backend_alb.arn
+resource "aws_lb_listener" "listener" {
+  load_balancer_arn = aws_lb.alb.arn
   port              = 80
   protocol          = "HTTP"
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.backend_tg.arn
+    target_group_arn = aws_lb_target_group.tg.arn
   }
 }
 
+# LAUNCH TEMPLATE
 resource "aws_launch_template" "backend" {
   name_prefix   = "backend-template"
   image_id      = "ami-0d5e7e27578d32e47"
   instance_type = "t3.micro"
   key_name      = "starttech-key"
 
-  network_interfaces {
-    associate_public_ip_address = true
-
-    security_groups = [
-      aws_security_group.ec2_sg.id
-    ]
+  iam_instance_profile {
+    name = aws_iam_instance_profile.ec2_profile.name
   }
 
- user_data = base64encode(<<-EOF
+  network_interfaces {
+    associate_public_ip_address = true
+    security_groups             = [aws_security_group.ec2_sg.id]
+  }
+
+  user_data = base64encode(<<EOF
 #!/bin/bash
 yum update -y
-yum install -y docker
+yum install -y docker amazon-cloudwatch-agent
 
 systemctl start docker
 systemctl enable docker
@@ -230,42 +186,62 @@ mkdir -p /home/ec2-user/site
 cat <<HTML > /home/ec2-user/site/index.html
 <html>
   <body>
-    <h1>StartTech is running 🚀</h1>
+    <h1>StartTech Running 🚀</h1>
   </body>
 </html>
 HTML
 
+cat <<CW > /opt/aws/amazon-cloudwatch-agent/bin/config.json
+{
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/messages",
+            "log_group_name": "starttech-logs",
+            "log_stream_name": "{instance_id}"
+          }
+        ]
+      }
+    }
+  }
+}
+CW
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+-a fetch-config -m ec2 \
+-c file:/opt/aws/amazon-cloudwatch-agent/bin/config.json -s
+
+systemctl enable amazon-cloudwatch-agent
+systemctl start amazon-cloudwatch-agent
+
 docker run -d \
   -p 8080:80 \
-  -v /home/ec2-user/site:/usr/share/nginx/html \
-  nginx
-  -e MONGO_URI="mongodb+srv://estherisaiah2000_db_user:Starry12345@cluster0.mlwu6bq.mongodb.net/starttech?retryWrites=true&w=majority" \
+  -e MONGO_URI="mongodb+srv://estherisaiah2000_db_user:Starryayo12345@cluster0.mlwu6bq.mongodb.net/?appName=Cluster0" \
   127259106152.dkr.ecr.us-east-1.amazonaws.com/starttech-backend:latest
-
 EOF
-  )
+)
 
   tag_specifications {
     resource_type = "instance"
-
     tags = {
       Name = "backend-instance"
     }
   }
 }
 
-resource "aws_autoscaling_group" "backend_asg" {
-  desired_capacity = 2
-  max_size         = 3
-  min_size         = 1
+# AUTO SCALING
+resource "aws_autoscaling_group" "asg" {
+  desired_capacity    = 2
+  max_size           = 3
+  min_size           = 1
   vpc_zone_identifier = [
     aws_subnet.public_subnet_1.id,
     aws_subnet.public_subnet_2.id
   ]
 
-  target_group_arns = [
-    aws_lb_target_group.backend_tg.arn
-  ]
+  target_group_arns = [aws_lb_target_group.tg.arn]
 
   launch_template {
     id      = aws_launch_template.backend.id
@@ -273,10 +249,4 @@ resource "aws_autoscaling_group" "backend_asg" {
   }
 
   health_check_type = "EC2"
-
-  tag {
-    key                 = "Name"
-    value               = "backend-asg-instance"
-    propagate_at_launch = true
-  }
 }
