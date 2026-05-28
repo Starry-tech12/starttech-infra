@@ -216,10 +216,8 @@ CW
 systemctl enable amazon-cloudwatch-agent
 systemctl start amazon-cloudwatch-agent
 
-docker run -d \
-  -p 8080:80 \
-  -e MONGO_URI="mongodb+srv://estherisaiah2000_db_user:Starryayo12345@cluster0.mlwu6bq.mongodb.net/?appName=Cluster0" \
-  127259106152.dkr.ecr.us-east-1.amazonaws.com/starttech-backend:latest
+  docker run -d \
+ -p 8080:80 \ nginx
 EOF
 )
 
